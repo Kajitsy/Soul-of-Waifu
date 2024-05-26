@@ -1,6 +1,5 @@
 torch
 characterai
-elevenlabs
 keyboard
 whisper-mic
 sounddevice
