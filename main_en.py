@@ -8,8 +8,7 @@ import keyboard
 import pyfiglet
 import sounddevice as sd
 from colorama import Fore, Style
-from characterai import PyAsyncCAI
-from elevenlabs import generate, set_api_key, play
+from characterai import aiocai
 from whisper_mic import WhisperMic
 
 char_list = []
@@ -73,7 +72,7 @@ class MainMenu:
         self.stdscr.refresh()
         self.screen_height, self.screen_width = self.stdscr.getmaxyx()
         
-        options = ['Text mode', 'Conversational mode with ElevenLabs voicing', 'Conversational mode with Silero TTS voicing', 'Exit to main menu']
+        options = ['Text mode', 'Conversational mode with Silero TTS voicing', 'Exit to main menu']
 
         current_option = 0
 
@@ -102,9 +101,6 @@ class MainMenu:
                     curses.endwin()
                     await mode1()
                 elif current_option == 1:
-                    curses.endwin()
-                    await mode2()
-                elif current_option == 2:
                     curses.endwin()
                     await mode3()
     
@@ -189,10 +185,6 @@ class Configuration:
             self.save_configuration()
             print("Character AI API key has been successfully added")
             
-        if 'elevenlabs_api' not in config:
-            config['elevenlabs_api'] = input("Enter your ElevenLabs API key: ")
-            self.save_configuration()
-            print("ElevenLabs API key has been successfully added")
             
         if 'device_torch' not in config:
             while True:
@@ -204,10 +196,6 @@ class Configuration:
                 else:
                     print("Error: enter device name correctly.")
                
-        if 'speaker_elevenlabs' not in config:
-            config['speaker_elevenlabs'] = input("Enter the name of the voice for ElevenLabs: ")
-            self.save_configuration()
-            print("The voiceover has been successfully selected")
             
         print("The configuration file was successfully created!")
     
@@ -405,15 +393,6 @@ def whisper_mic(): #Microphone recording
     mic_message = mic.listen()
     return mic_message
 
-def elevenlabs_dub(text_cai): #Voiced by ElevenLabs
-    audio = generate(
-        text = text_cai,
-        voice = speaker_elevenlabs,
-        model = 'eleven_multilingual_v2'
-    )
-    
-    return audio
-
 def silero_dub_en(model, text_cai, sample_rate):
     audio = model.apply_tts(text = text_cai, speaker = speaker_en, sample_rate = sample_rate)
     sd.play(audio, sample_rate)
@@ -425,6 +404,13 @@ def get_char():
     print("-------------------------------------")
     char = configuration.selector_char()
     return char
+
+async def get_message(text, char):
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        messagenotext = await chat.send_message(char, chatid.chat_id, text)
+        textil = messagenotext.text
+    return textil
 
 def main():
     #Logo display
@@ -451,45 +437,12 @@ async def mode1(): #SileroTTS voicing mode, but in text version
         message_user = input(Fore.CYAN + "You: " + Style.RESET_ALL)
         if message_user.lower() == 'Exit' or message_user.lower() == 'exit':
             break
-        chat = await client.chat2.get_chat(char)
-        author = {'author_id': chat['chats'][0]['creator_id']}
-        async with client.connect() as chat2:
-            data = await chat2.send_message(
-                char, chat['chats'][0]['chat_id'],
-                message_user, author)
-        text_cai = data['turn']['candidates'][0]['raw_content']
+        ai_message = await get_message(message_user, char)
         model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
         model.to(device)
-        print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{text_cai}")
+        print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
         print("-------------------------------------")
-        silero_dub_en(model, text_cai, sample_rate)
-
-async def mode2(): #ElevenLabs voicing mode
-    print("-------------------------------------")
-    print("Mode with " + Fore.CYAN + "ElevenLabs voicing was chosen" + Style.RESET_ALL)
-    time.sleep(1)
-    char = get_char()
-    clear_console()
-    print("Character " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " was chosen")
-    print("")
-    print("Click on " + Fore.CYAN +"RIGHT SHIFT" + Style.RESET_ALL + ", to run the program...")
-    while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                message_user = whisper_mic()
-                print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
-                chat = await client.chat2.get_chat(char)
-                author = {'author_id': chat['chats'][0]['creator_id']}
-                async with client.connect() as chat2:
-                    data = await chat2.send_message(
-                        char, chat['chats'][0]['chat_id'],
-                        message_user, author
-                    )
-                text_cai = data['turn']['candidates'][0]['raw_content']
-                audio = elevenlabs_dub(text_cai)
-                print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{text_cai}")
-                print("-------------------------------------") 
-                play(audio)   
+        silero_dub_en(model, ai_message, sample_rate)
 
 async def mode3(): #SileroTTS EN voicing mode
     print("-------------------------------------")
@@ -505,19 +458,12 @@ async def mode3(): #SileroTTS EN voicing mode
             while True:
                 message_user = whisper_mic()
                 print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
-                chat = await client.chat2.get_chat(char)
-                author = {'author_id': chat['chats'][0]['creator_id']}
-                async with client.connect() as chat2:
-                    data = await chat2.send_message(
-                        char, chat['chats'][0]['chat_id'],
-                        message_user, author
-                    )
-                text_cai = data['turn']['candidates'][0]['raw_content']
+                ai_message = await get_message(message_user, char)
                 model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
                 model.to(device)
-                print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{text_cai}")
+                print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
                 print("-------------------------------------") 
-                silero_dub_en(model, text_cai, sample_rate)
+                silero_dub_en(model, ai_message, sample_rate)
 
 #Creating and loading a config file
 current_dir = os.getcwd()
@@ -527,21 +473,17 @@ conf.load_char_config()
 main_config = conf.load_config()
     
 #Variables from config file
-elevenlabs_api = main_config['config']['elevenlabs_api']
 characterai_api = main_config['config']['characterai_api']
 device_torch = main_config['config']['device_torch']
-speaker_elevenlabs = main_config['config']['speaker_elevenlabs']
 
 #Main variables
-set_api_key(elevenlabs_api)
-client = PyAsyncCAI(characterai_api)
+client = aiocai.Client(characterai_api)
 
 #Variables for dub
 local_file_ru = 'model_silero_ru.pt'
 local_file_eng = 'model_silero_eng.pt'
 device = torch.device(device_torch)
 torch.set_num_threads(12)
-voice = speaker_elevenlabs
 speaker_en = 'en_0'
 sample_rate = 48000
 put_accent = True

@@ -5,7 +5,6 @@ pip install pyfiglet
 pip install whisper-mic
 pip install characterai
 pip install sounddevice
-pip install elevenlabs
 pip install gpytranslate
 pip install windows-curses
 pip install colorama

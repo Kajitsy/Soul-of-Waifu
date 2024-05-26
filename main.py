@@ -9,8 +9,7 @@ import pyfiglet
 import sounddevice as sd
 from gpytranslate import Translator
 from colorama import Fore, Style
-from characterai import PyAsyncCAI
-from elevenlabs import generate, set_api_key, play
+from characterai import aiocai
 from whisper_mic import WhisperMic
 
 char_list = []
@@ -74,7 +73,7 @@ class MainMenu:
         self.stdscr.refresh()
         self.screen_height, self.screen_width = self.stdscr.getmaxyx()
         
-        options = ['Текстовый режим', 'Разговорный режим с озвучкой ElevenLabs', 'Разговорный режим с русской озвучкой SileroTTS', 'Разговорный режим с английской озвучкой SileroTTS', 'Выход в главное меню']
+        options = ['Текстовый режим', 'Разговорный режим с русской озвучкой SileroTTS', 'Разговорный режим с английской озвучкой SileroTTS', 'Выход в главное меню']
 
         current_option = 0
 
@@ -104,11 +103,8 @@ class MainMenu:
                     await mode1()
                 elif current_option == 1:
                     curses.endwin()
-                    await mode2()
-                elif current_option == 2:
-                    curses.endwin()
                     await mode3()
-                elif current_option == 3:
+                elif current_option == 2:
                     curses.endwin()
                     await mode4()
     
@@ -193,10 +189,6 @@ class Configuration:
             self.save_configuration()
             print("API-ключ от Character AI успешно добавлен")
             
-        if 'elevenlabs_api' not in config:
-            config['elevenlabs_api'] = input("Введите ваш API-ключ от ElevenLabs: ")
-            self.save_configuration()
-            print("API-ключ ElevenLabs успешно добавлен")
             
         if 'device_torch' not in config:
             while True:
@@ -218,10 +210,6 @@ class Configuration:
                 else:
                     print("Ошибка: введите название спикера корректно")
                
-        if 'speaker_elevenlabs' not in config:
-            config['speaker_elevenlabs'] = input("Введите название голоса для ElevenLabs: ")
-            self.save_configuration()
-            print("Голос озвучки успешно выбран")
             
         print("Конфигурационный файл успешно создан!")
     
@@ -426,15 +414,6 @@ def whisper_mic(): #Запись слов с микрофона
     mic_message = mic.listen()
     return mic_message
 
-def elevenlabs_dub(message_char): #Озвучка ElevenLabs
-    audio = generate(
-        text = message_char,
-        voice = speaker_elevenlabs,
-        model = 'eleven_multilingual_v2'
-    )
-    
-    return audio
-
 def silero_dub(model, message_char, sample_rate): #Русская озвучка SileroTTS
     audio = model.apply_tts(text = message_char, speaker = speaker, sample_rate = sample_rate, put_accent = put_accent, put_yo = put_yo)
     sd.play(audio, sample_rate)
@@ -452,6 +431,13 @@ def get_char():
     print("-------------------------------------")
     char = configuration.selector_char()
     return char
+
+async def get_message(text, char):
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        messagenotext = await chat.send_message(char, chatid.chat_id, text)
+        textil = messagenotext.text
+    return textil
 
 def main():
     #Logo display
@@ -480,53 +466,14 @@ async def mode1(): #Текстовый режим с озвучкой SileroTTS
             break
         translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
         message_user = translation.text
-        chat = await client.chat2.get_chat(char)
-        author = {'author_id': chat['chats'][0]['creator_id']}
-        async with client.connect() as chat2:
-            data = await chat2.send_message(
-                char, chat['chats'][0]['chat_id'],
-                message_user, author)
-        text_cai = data['turn']['candidates'][0]['raw_content']
-        translation = await t.translate(text_cai, targetlang='ru') #Язык, на который переводится текст
+        ai_message = await get_message(message_user, char)
+        translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
         message_char = translation.text
         model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
         model.to(device)
         print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
         print("-------------------------------------")
         silero_dub(model, message_char, sample_rate)
-
-async def mode2(): #Режим с озвучкой ElevenLabs
-    print("-------------------------------------")
-    print("Выбран режим с " + Fore.CYAN + "озвучкой ElevenLabs" + Style.RESET_ALL)
-    time.sleep(1)
-    char = get_char()
-    clear_console()
-    print("Персонаж " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " был выбран")
-    print("")
-    print("Чтобы выйти в главное меню, скажи" + Fore.CYAN + " Выход" + Style.RESET_ALL)
-    print("Нажми на " + Fore.CYAN +"ПРАВЫЙ SHIFT" + Style.RESET_ALL + ", чтобы запустить программу...")
-    while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                t = Translator()
-                message_user = whisper_mic()
-                print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
-                translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-                message_user = translation.text
-                chat = await client.chat2.get_chat(char)
-                author = {'author_id': chat['chats'][0]['creator_id']}
-                async with client.connect() as chat2:
-                    data = await chat2.send_message(
-                        char, chat['chats'][0]['chat_id'],
-                        message_user, author
-                    )
-                text_cai = data['turn']['candidates'][0]['raw_content']
-                translation = await t.translate(text_cai, targetlang="ru") #Язык, на который переводится текст
-                message_char = translation.text
-                audio = elevenlabs_dub(message_char)
-                print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-                print("-------------------------------------") 
-                play(audio)   
     
 async def mode3(): #Режим с русской озвучкой SileroTTS
     print("-------------------------------------")
@@ -546,15 +493,8 @@ async def mode3(): #Режим с русской озвучкой SileroTTS
                 print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)     
                 translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
                 message_user = translation.text
-                chat = await client.chat2.get_chat(char)
-                author = {'author_id': chat['chats'][0]['creator_id']}
-                async with client.connect() as chat2:
-                    data = await chat2.send_message(
-                        char, chat['chats'][0]['chat_id'],
-                        message_user, author
-                    )
-                text_cai = data['turn']['candidates'][0]['raw_content']
-                translation = await t.translate(text_cai, targetlang='ru') #Язык, на который переводится текст
+                ai_message = await get_message(message_user, char)
+                translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
                 message_char = translation.text
                 model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
                 model.to(device)
@@ -580,15 +520,7 @@ async def mode4(): #Режим с английской озвучкой SileroTT
                 print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
                 translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
                 message_user = translation.text
-                chat = await client.chat2.get_chat(char)
-                author = {'author_id': chat['chats'][0]['creator_id']}
-                async with client.connect() as chat2:
-                    data = await chat2.send_message(
-                        char, chat['chats'][0]['chat_id'],
-                        message_user, author
-                    )
-                text_cai = data['turn']['candidates'][0]['raw_content']
-                message_char = text_cai
+                message_char = await get_message(message_user, char)
                 model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
                 model.to(device)
                 print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
@@ -603,22 +535,18 @@ conf.load_char_config()
 main_config = conf.load_config()
     
 #Переменные из конфигурационного файла
-elevenlabs_api = main_config['config']['elevenlabs_api']
 characterai_api = main_config['config']['characterai_api']
 device_torch = main_config['config']['device_torch']
 speaker_silero = main_config['config']['speaker_silero']
-speaker_elevenlabs = main_config['config']['speaker_elevenlabs']
 
 #Главные переменные
-set_api_key(elevenlabs_api)
-client = PyAsyncCAI(characterai_api)
+client = aiocai.Client(characterai_api)
 
 #Переменные для озвучки
 local_file_ru = 'model_silero_ru.pt'
 local_file_eng = 'model_silero_eng.pt'
 device = torch.device(device_torch)
 torch.set_num_threads(12)
-voice = speaker_elevenlabs
 speaker = speaker_silero
 speaker_en = 'en_0'
 sample_rate = 48000
