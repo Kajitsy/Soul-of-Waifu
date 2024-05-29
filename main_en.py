@@ -8,8 +8,10 @@ import keyboard
 import pyfiglet
 import sounddevice as sd
 from colorama import Fore, Style
-from characterai import aiocai
+from characterai import aiocai, sendCode, authUser
 from whisper_mic import WhisperMic
+from elevenlabs import play
+from elevenlabs.client import ElevenLabs
 
 char_list = []
 char_name = {}
@@ -72,7 +74,10 @@ class MainMenu:
         self.stdscr.refresh()
         self.screen_height, self.screen_width = self.stdscr.getmaxyx()
         
-        options = ['Text mode', 'Conversational mode with Silero TTS voicing', 'Exit to main menu']
+        if tts_service == "SileroTTS":
+            options = ['Text mode', 'Conversational mode with Silero TTS voicing', 'Conversational mode with ElevenLabs voicing (Unavailable)', 'Exit to main menu']
+        elif tts_service == "ElevenLabs":
+            options = ['Text mode', 'Conversational mode with Silero TTS voicing (Unavailable)', 'Conversational mode with ElevenLabs voicing', 'Exit to main menu']
 
         current_option = 0
 
@@ -92,17 +97,23 @@ class MainMenu:
             elif key == curses.KEY_DOWN and current_option < len(options)-1:
                 current_option += 1
             elif key == curses.KEY_ENTER or key in [10, 13]:
-                if current_option == 2:
+                if current_option == 3:
                     print("Going to the main menu...")
                     time.sleep(1)
                     menu = MainMenu()
                     menu.create_menu()
                 elif current_option == 0:
-                    curses.endwin()
-                    await mode1()
+                    if tts_service == "SileroTTS":
+                        curses.endwin()
+                        await mode1()
                 elif current_option == 1:
-                    curses.endwin()
-                    await mode3()
+                    if tts_service == "SileroTTS":
+                        curses.endwin()
+                        await mode3()
+                elif current_option == 2:
+                    if tts_service == "ElevenLabs":
+                        curses.endwin()
+                        await mode4()
     
     def confirm(self, confirmation_text):
         self.print_center(confirmation_text)
@@ -181,23 +192,62 @@ class Configuration:
             return main_config
         
         if 'characterai_api' not in config:
-            config['characterai_api'] = input("Enter your Character AI API key: ")
+            email = input("Enter email (if you already have an API key, enter " + Fore.CYAN + "Key" + Style.RESET_ALL +"): ")
+            if email == "Key" or email == "key":
+                config['characterai_api'] = input("Enter your API key: ")
+            else:
+                self.getlink(email)
+                link = input("Paste the link from the email: ")
+                config['characterai_api'] = self.gettoken(email, link)
             self.save_configuration()
-            print("Character AI API key has been successfully added")
+            print("API key from Character AI has been successfully added")
             
-            
-        if 'device_torch' not in config:
-            while True:
-                config['device_torch'] = input("Select the SileroTTS voicing device (cuda or cpu): ")
-                if config["device_torch"].lower() == "cuda" or config["device_torch"].lower() == "cpu":
+        while True:
+            chosen_variable = input(f"What do you want to use for voice generation({Fore.CYAN}SileroTTS{Style.RESET_ALL} or {Fore.CYAN}ElevenLabs{Style.RESET_ALL}): ")
+            if chosen_variable == "ElevenLabs" or chosen_variable == "elevenlabs" or chosen_variable == "Elevenlabs" or chosen_variable == "elevenLabs":
+                config['tts_service'] = "ElevenLabs"
+                if 'elevenlabs_api' not in config:
+                    config['elevenlabs_api'] = input("Enter your ElevenLabs API key: ")
                     self.save_configuration()
-                    print("Device successfully selected")
-                    break
-                else:
-                    print("Error: enter device name correctly.")
-               
+                    print("ElevenLabs API key successfully added")
+
+                if 'speaker_elevenlabs' not in config:
+                    config['speaker_elevenlabs'] = input("Enter the voice name for ElevenLabs: ")
+                    self.save_configuration()
+                    print("Voice successfully selected")
+                break
+            elif chosen_variable == "SileroTTS" or chosen_variable == "sileroTTS" or chosen_variable == "silerotts":
+                config['tts_service'] = "SileroTTS"
+                if 'device_torch' not in config:
+                    while True:
+                        config['device_torch'] = input("Choose the device for SileroTTS voice generation (cuda (GPU) or cpu (CPU)): ")
+                        if config["device_torch"].lower() == "cuda" or config["device_torch"].lower() == "cpu":
+                            self.save_configuration()
+                            print("Device successfully selected")
+                            break
+                        else:
+                            print("Error: enter the device name correctly")
+
+                if 'speaker_silero' not in config:            
+                    while True:
+                        config['speaker_silero'] = input("Enter the voice name for Silero (aidar, baya, kseniya, xenia, random): ")
+                        if config['speaker_silero'].lower() == "aidar" or config['speaker_silero'].lower() == "baya" or config['speaker_silero'].lower() == "kseniya" or config['speaker_silero'].lower() == "xenia" or config['speaker_silero'].lower() == "random":
+                            self.save_configuration()
+                            print("Voice successfully selected")
+                            break
+                        else:
+                            print("Error: enter the speaker name correctly")
+                break
+            else:
+                print("Error: enter the service name correctly")     
             
         print("The configuration file was successfully created!")
+
+    def getlink(self, email):
+        sendCode(email)
+    
+    def gettoken(self, email, link):
+        authUser(link, email)
     
     def load_char_config(self):
         current_dir = os.getcwd()
@@ -245,13 +295,24 @@ class Configuration:
             time.sleep(1)
             menu = MainMenu()
             menu.create_menu()
+
+        if chosen_variable == "characterai_api":
+            email = input("Enter email (if you already have an API key, enter " + Fore.CYAN + "Key" + Style.RESET_ALL +"): ")
+            if email == "Key" or email == "key":
+                token = input("Enter your API key: ")
+            else:
+                self.getlink(email)
+                link = input("Paste the link from the email: ")
+                token = self.gettoken(email, link)
+            config['config'][chosen_variable] = token
         
         if chosen_variable not in config['config']:
             print('Error: the selected variable is not present in the config...')
             return
 
-        new_value = input(f"Value of variable {chosen_variable}:  " + Fore.CYAN + f"{config['config'][chosen_variable]}." + Style.RESET_ALL + " Enter a new value for the variable: ")
-        config['config'][chosen_variable] = new_value
+        if chosen_variable != "characterai_api":
+            new_value = input(f"Value of variable {chosen_variable}:  " + Fore.CYAN + f"{config['config'][chosen_variable]}." + Style.RESET_ALL + " Enter a new value for the variable: ")
+            config['config'][chosen_variable] = new_value
     
         with open('config.json', 'w') as config_file:
             json.dump(config, config_file)
@@ -400,22 +461,29 @@ def silero_dub_en(model, text_cai, sample_rate):
     time.sleep(len(audio) / sample_rate)
     sd.stop
 
+def eleven_dub(message_char):
+    audio = ELClient.generate(
+        text=message_char,
+        voice=voice,
+        model="eleven_multilingual_v2"
+    )
+    play(audio, use_ffmpeg=False)
+
 def get_char():
     configuration = Configuration()
     print("-------------------------------------")
     char = configuration.selector_char()
     return char
 
-async def get_message(text, char, chat, chatid):
-    message = await chat.send_message(char, chatid.chat_id, text)
+async def get_message(text, char):
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        message = await chat.send_message(char, chatid.chat_id, text)
     return message
 
 def main():
     #Logo display
     logoPRINT_time()
-    
-    #Checking availability of Silero TTS models
-    check_silero_models()
     
     #Create main menu
     menu = MainMenu()
@@ -430,19 +498,20 @@ async def mode1(): #SileroTTS voicing mode, but in text version
     print("Character " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " was chosen")
     print("To exit to the main menu, write" + Fore.CYAN + " Exit" + Style.RESET_ALL)
     print("")
-    chatid = await client.get_chat(char)
-    async with await client.connect() as chat:
-        while True:
-            time.sleep(1)
-            message_user = input(Fore.CYAN + "You: " + Style.RESET_ALL)
-            if message_user.lower() == 'Exit' or message_user.lower() == 'exit':
-                break
-            ai_message = await get_message(message_user, char, chat, chatid)
-            model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-            model.to(device)
-            print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
-            print("-------------------------------------")
+    while True:
+        time.sleep(1)
+        message_user = input(Fore.CYAN + "You: " + Style.RESET_ALL)
+        if message_user.lower() == 'Exit' or message_user.lower() == 'exit':
+            break
+        ai_message = await get_message(message_user, char)
+        model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+        model.to(device)
+        print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
+        print("-------------------------------------")
+        if tts_service == "SileroTTS":
             silero_dub_en(model, ai_message, sample_rate)
+        elif tts_service == "ElevenLabs":
+            eleven_dub(ai_message)
 
 async def mode3(): #SileroTTS EN voicing mode
     print("-------------------------------------")
@@ -453,19 +522,36 @@ async def mode3(): #SileroTTS EN voicing mode
     print("Character " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " was chosen")
     print("")
     print("Click on " + Fore.CYAN +"RIGHT SHIFT" + Style.RESET_ALL + ", to run the program...")
-    chatid = await client.get_chat(char)
-    async with await client.connect() as chat:
-        while True:
-            if keyboard.is_pressed('RIGHT_SHIFT'):
-                while True:
-                    message_user = whisper_mic()
-                    print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
-                    ai_message = await get_message(message_user, char, chat, chatid)
-                    model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-                    model.to(device)
-                    print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
-                    print("-------------------------------------") 
-                    silero_dub_en(model, ai_message, sample_rate)
+    while True:
+        if keyboard.is_pressed('RIGHT_SHIFT'):
+            while True:
+                message_user = whisper_mic()
+                print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
+                ai_message = await get_message(message_user, char)
+                model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+                model.to(device)
+                print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
+                print("-------------------------------------") 
+                silero_dub_en(model, ai_message, sample_rate)
+
+async def mode4(): #ElevenLabs voicing mode
+    print("-------------------------------------")
+    print("Mode with " + Fore.CYAN + "ElevenLabs voicing was chosen" + Style.RESET_ALL)
+    time.sleep(1)
+    char = get_char()
+    clear_console()
+    print("Character " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " was chosen")
+    print("")
+    print("Click on " + Fore.CYAN +"RIGHT SHIFT" + Style.RESET_ALL + ", to run the program...")
+    while True:
+        if keyboard.is_pressed('RIGHT_SHIFT'):
+            while True:
+                message_user = whisper_mic()
+                print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
+                message_char = await get_message(message_user, char)
+                print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{message_char}")
+                print("-------------------------------------") 
+                eleven_dub(message_char)  
 
 #Creating and loading a config file
 current_dir = os.getcwd()
@@ -476,21 +562,32 @@ main_config = conf.load_config()
     
 #Variables from config file
 characterai_api = main_config['config']['characterai_api']
-device_torch = main_config['config']['device_torch']
+tts_service = main_config['config']['tts_service']
+if tts_service == "ElevenLabs":
+    elevenlabs_api = main_config['config']['elevenlabs_api']
+    speaker_elevenlabs = main_config['config']['speaker_elevenlabs']
+    ELClient = ElevenLabs(api_key=elevenlabs_api)
+elif tts_service == "SileroTTS":
+    device_torch = main_config['config']['device_torch']
+    speaker_silero = main_config['config']['speaker_silero']
 
 #Main variables
 client = aiocai.Client(characterai_api)
 
 #Variables for dub
-local_file_ru = 'model_silero_ru.pt'
-local_file_eng = 'model_silero_eng.pt'
-device = torch.device(device_torch)
-torch.set_num_threads(12)
-speaker_en = 'en_0'
-sample_rate = 48000
-put_accent = True
-language = 'ru'
-put_yo = True
+if tts_service == "ElevenLabs":
+    voice = speaker_elevenlabs
+elif tts_service == "SileroTTS":
+    local_file_ru = 'model_silero_ru.pt'
+    local_file_eng = 'model_silero_eng.pt'
+    device = torch.device(device_torch)
+    torch.set_num_threads(12)
+    speaker = speaker_silero
+    speaker_en = 'en_0'
+    sample_rate = 48000
+    put_accent = True
+    put_yo = True
+    check_silero_models()
 
 current_dir = os.getcwd()
 config_path = os.path.join(current_dir, 'config.json')
