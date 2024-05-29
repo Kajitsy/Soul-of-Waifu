@@ -93,7 +93,7 @@ class MainMenu:
             elif key == curses.KEY_DOWN and current_option < len(options)-1:
                 current_option += 1
             elif key == curses.KEY_ENTER or key in [10, 13]:
-                if current_option == 4:
+                if current_option == 3:
                     print("Переход в главное меню...")
                     time.sleep(1)
                     menu = MainMenu()
@@ -103,10 +103,10 @@ class MainMenu:
                     await mode1()
                 elif current_option == 1:
                     curses.endwin()
-                    await mode3()
+                    await mode2()
                 elif current_option == 2:
                     curses.endwin()
-                    await mode4()
+                    await mode3()
     
     def confirm(self, confirmation_text):
         self.print_center(confirmation_text)
@@ -188,8 +188,7 @@ class Configuration:
             config['characterai_api'] = input("Введите ваш API-ключ от Character AI: ")
             self.save_configuration()
             print("API-ключ от Character AI успешно добавлен")
-            
-            
+           
         if 'device_torch' not in config:
             while True:
                 config['device_torch'] = input("Выберите устройство работы озвучки SileroTTS (cuda (видеокарта) или cpu (процессор)): ")
@@ -300,9 +299,10 @@ class Configuration:
             selection = input("Введите слово " + Fore.CYAN + 'Добавить' + Style.RESET_ALL + " для добавления нового персонажа или слово " + Fore.CYAN + 'Удалить' + Style.RESET_ALL + " для удаления персонажа или слово " + Fore.CYAN + 'Выход' + Style.RESET_ALL + ", чтобы выйти в главное меню: " )
             print("")
             if selection.lower() == 'добавить' or selection.lower() == 'Добавить':
-                name = input("Введите имя нового персонажа: ")
                 char_id = input("Введите ID нового персонажа: ")
-                configuration.add_char(name, char_id)
+                name = asyncio.run(client.get_persona(char_id))
+                print(f"Имя вашего персонажа: {name.name}")
+                configuration.add_char(name.name, char_id)
             elif selection.lower() == 'удалить' or selection.lower() == 'Удалить':
                 configuration.del_char()
             elif selection.lower() == 'выход' or selection.lower() == 'Выход':
@@ -432,12 +432,9 @@ def get_char():
     char = configuration.selector_char()
     return char
 
-async def get_message(text, char):
-    chatid = await client.get_chat(char)
-    async with await client.connect() as chat:
-        messagenotext = await chat.send_message(char, chatid.chat_id, text)
-        textil = messagenotext.text
-    return textil
+async def get_message(text, char, chat, chatid):
+    message = await chat.send_message(char, chatid.chat_id, text)
+    return message
 
 def main():
     #Logo display
@@ -458,24 +455,26 @@ async def mode1(): #Текстовый режим с озвучкой SileroTTS
     print("Персонаж " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " был выбран")
     print("Чтобы выйти в главное меню, напишите" + Fore.CYAN + " Выход" + Style.RESET_ALL)
     print("")
-    while True:
-        time.sleep(1)
-        t = Translator()
-        message_user = input(Fore.CYAN + "Вы: " + Style.RESET_ALL)
-        if message_user.lower() == 'Выход' or message_user.lower() == 'выход':
-            break
-        translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-        message_user = translation.text
-        ai_message = await get_message(message_user, char)
-        translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
-        message_char = translation.text
-        model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
-        model.to(device)
-        print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-        print("-------------------------------------")
-        silero_dub(model, message_char, sample_rate)
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        while True:
+            time.sleep(1)
+            t = Translator()
+            message_user = input(Fore.CYAN + "Вы: " + Style.RESET_ALL)
+            if message_user.lower() == 'Выход' or message_user.lower() == 'выход':
+                break
+            translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
+            message_user = translation.text
+            ai_message = await get_message(message_user, char, chat, chatid)
+            translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
+            message_char = translation.text
+            model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
+            model.to(device)
+            print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
+            print("-------------------------------------")
+            silero_dub(model, message_char, sample_rate)
     
-async def mode3(): #Режим с русской озвучкой SileroTTS
+async def mode2(): #Режим с русской озвучкой SileroTTS
     print("-------------------------------------")
     print("Выбран режим с " + Fore.CYAN + "русской озвучкой SileroTTS" + Style.RESET_ALL)
     time.sleep(1)
@@ -485,24 +484,26 @@ async def mode3(): #Режим с русской озвучкой SileroTTS
     print("")
     print("Чтобы выйти в главное меню, скажи" + Fore.CYAN + " Выход" + Style.RESET_ALL)
     print("Нажми на " + Fore.CYAN +"ПРАВЫЙ SHIFT" + Style.RESET_ALL + ", чтобы запустить программу...")
-    while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                t = Translator()
-                message_user = whisper_mic() 
-                print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)     
-                translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-                message_user = translation.text
-                ai_message = await get_message(message_user, char)
-                translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
-                message_char = translation.text
-                model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
-                model.to(device)
-                print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-                print("-------------------------------------") 
-                silero_dub(model, message_char, sample_rate)
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        while True:
+            if keyboard.is_pressed('RIGHT_SHIFT'):
+                while True:
+                    t = Translator()
+                    message_user = whisper_mic() 
+                    print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)     
+                    translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
+                    message_user = translation.text
+                    ai_message = await get_message(message_user, char, chat, chatid)
+                    translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
+                    message_char = translation.text
+                    model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
+                    model.to(device)
+                    print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
+                    print("-------------------------------------") 
+                    silero_dub(model, message_char, sample_rate)
 
-async def mode4(): #Режим с английской озвучкой SileroTTS
+async def mode3(): #Режим с английской озвучкой SileroTTS
     print("-------------------------------------")
     print("Выбран режим с " + Fore.CYAN + "английской озвучкой SileroTTS" + Style.RESET_ALL)
     time.sleep(1)
@@ -512,20 +513,22 @@ async def mode4(): #Режим с английской озвучкой SileroTT
     print("")
     print("Чтобы выйти в главное меню, скажи" + Fore.CYAN + " Выход" + Style.RESET_ALL)
     print("Нажми на " + Fore.CYAN +"ПРАВЫЙ SHIFT" + Style.RESET_ALL + ", чтобы запустить программу...")
-    while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                t = Translator()
-                message_user = whisper_mic()
-                print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
-                translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-                message_user = translation.text
-                message_char = await get_message(message_user, char)
-                model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-                model.to(device)
-                print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-                print("-------------------------------------") 
-                silero_dub_en(model, message_char, sample_rate)
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        while True:
+            if keyboard.is_pressed('RIGHT_SHIFT'):
+                while True:
+                    t = Translator()
+                    message_user = whisper_mic()
+                    print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
+                    translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
+                    message_user = translation.text
+                    message_char = await get_message(message_user, char, chat, chatid)
+                    model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+                    model.to(device)
+                    print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
+                    print("-------------------------------------") 
+                    silero_dub_en(model, message_char, sample_rate)
 
 #Создание и чтение конфигурационного файла
 current_dir = os.getcwd()

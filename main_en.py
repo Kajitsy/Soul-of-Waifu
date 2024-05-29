@@ -92,7 +92,7 @@ class MainMenu:
             elif key == curses.KEY_DOWN and current_option < len(options)-1:
                 current_option += 1
             elif key == curses.KEY_ENTER or key in [10, 13]:
-                if current_option == 3:
+                if current_option == 2:
                     print("Going to the main menu...")
                     time.sleep(1)
                     menu = MainMenu()
@@ -286,9 +286,10 @@ class Configuration:
             selection = input("Enter the word " + Fore.CYAN + 'Add' + Style.RESET_ALL + " to add a new character or the word " + Fore.CYAN + 'Delete' + Style.RESET_ALL + " to delete a character or the word " + Fore.CYAN + 'Exit' + Style.RESET_ALL + ", to exit to the main menu: ")
             print("")
             if selection.lower() == 'Add' or selection.lower() == 'add':
-                name = input("Enter the new character's name: ")
                 char_id = input("Enter the new character's ID: ")
-                configuration.add_char(name, char_id)
+                name = asyncio.run(client.get_persona(char_id))
+                print(f"Name your new character: {name.name}")
+                configuration.add_char(name.name, char_id)
             elif selection.lower() == 'Delete' or selection.lower() == 'delete':
                 configuration.del_char()
             elif selection.lower() == 'Exit' or selection.lower() == 'exit':
@@ -405,12 +406,9 @@ def get_char():
     char = configuration.selector_char()
     return char
 
-async def get_message(text, char):
-    chatid = await client.get_chat(char)
-    async with await client.connect() as chat:
-        messagenotext = await chat.send_message(char, chatid.chat_id, text)
-        textil = messagenotext.text
-    return textil
+async def get_message(text, char, chat, chatid):
+    message = await chat.send_message(char, chatid.chat_id, text)
+    return message
 
 def main():
     #Logo display
@@ -432,17 +430,19 @@ async def mode1(): #SileroTTS voicing mode, but in text version
     print("Character " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " was chosen")
     print("To exit to the main menu, write" + Fore.CYAN + " Exit" + Style.RESET_ALL)
     print("")
-    while True:
-        time.sleep(1)
-        message_user = input(Fore.CYAN + "You: " + Style.RESET_ALL)
-        if message_user.lower() == 'Exit' or message_user.lower() == 'exit':
-            break
-        ai_message = await get_message(message_user, char)
-        model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-        model.to(device)
-        print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
-        print("-------------------------------------")
-        silero_dub_en(model, ai_message, sample_rate)
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        while True:
+            time.sleep(1)
+            message_user = input(Fore.CYAN + "You: " + Style.RESET_ALL)
+            if message_user.lower() == 'Exit' or message_user.lower() == 'exit':
+                break
+            ai_message = await get_message(message_user, char, chat, chatid)
+            model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+            model.to(device)
+            print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
+            print("-------------------------------------")
+            silero_dub_en(model, ai_message, sample_rate)
 
 async def mode3(): #SileroTTS EN voicing mode
     print("-------------------------------------")
@@ -453,17 +453,19 @@ async def mode3(): #SileroTTS EN voicing mode
     print("Character " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " was chosen")
     print("")
     print("Click on " + Fore.CYAN +"RIGHT SHIFT" + Style.RESET_ALL + ", to run the program...")
-    while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                message_user = whisper_mic()
-                print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
-                ai_message = await get_message(message_user, char)
-                model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-                model.to(device)
-                print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
-                print("-------------------------------------") 
-                silero_dub_en(model, ai_message, sample_rate)
+    chatid = await client.get_chat(char)
+    async with await client.connect() as chat:
+        while True:
+            if keyboard.is_pressed('RIGHT_SHIFT'):
+                while True:
+                    message_user = whisper_mic()
+                    print(Fore.CYAN + "You: " + Style.RESET_ALL, message_user)
+                    ai_message = await get_message(message_user, char, chat, chatid)
+                    model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+                    model.to(device)
+                    print(Fore.BLUE + "Character: " + Style.RESET_ALL + f"{ai_message}")
+                    print("-------------------------------------") 
+                    silero_dub_en(model, ai_message, sample_rate)
 
 #Creating and loading a config file
 current_dir = os.getcwd()
