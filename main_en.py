@@ -347,10 +347,9 @@ class Configuration:
             selection = input("Enter the word " + Fore.CYAN + 'Add' + Style.RESET_ALL + " to add a new character or the word " + Fore.CYAN + 'Delete' + Style.RESET_ALL + " to delete a character or the word " + Fore.CYAN + 'Exit' + Style.RESET_ALL + ", to exit to the main menu: ")
             print("")
             if selection.lower() == 'Add' or selection.lower() == 'add':
+                name = input("Enter the new character's name: ")
                 char_id = input("Enter the new character's ID: ")
-                name = asyncio.run(client.get_persona(char_id))
-                print(f"Name your new character: {name.name}")
-                configuration.add_char(name.name, char_id)
+                configuration.add_char(name, char_id)
             elif selection.lower() == 'Delete' or selection.lower() == 'delete':
                 configuration.del_char()
             elif selection.lower() == 'Exit' or selection.lower() == 'exit':

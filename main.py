@@ -353,10 +353,9 @@ class Configuration:
             selection = input("Введите слово " + Fore.CYAN + 'Добавить' + Style.RESET_ALL + " для добавления нового персонажа или слово " + Fore.CYAN + 'Удалить' + Style.RESET_ALL + " для удаления персонажа или слово " + Fore.CYAN + 'Выход' + Style.RESET_ALL + ", чтобы выйти в главное меню: " )
             print("")
             if selection.lower() == 'добавить' or selection.lower() == 'Добавить':
+                name = input("Введите имя нового персонажа: ")
                 char_id = input("Введите ID нового персонажа: ")
-                name = asyncio.run(client.get_persona(char_id))
-                print(f"Имя вашего персонажа: {name.name}")
-                configuration.add_char(name.name, char_id)
+                configuration.add_char(name, char_id)
             elif selection.lower() == 'удалить' or selection.lower() == 'Удалить':
                 configuration.del_char()
             elif selection.lower() == 'выход' or selection.lower() == 'Выход':
