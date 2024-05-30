@@ -608,9 +608,9 @@ async def mode4(): #Режим с озвучкой ElevenLabs
             break
         translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
         message_user = translation.text
-        message_char = await get_message(message_user, char)
-        model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-        model.to(device)
+        ai_message = await get_message(message_user, char)
+        translation = await t.translate(ai_message, targetlang='ru')
+        message_char = translation.text
         print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
         print("-------------------------------------") 
         eleven_dub(message_char)
