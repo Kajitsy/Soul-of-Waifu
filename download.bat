@@ -1,8 +1,8 @@
 @echo Loading libraries... 
 @echo off 
-pip install keyboard
 pip install pyfiglet
-pip install whisper-mic
+pip install speechrecognition
+pip install setuptools
 pip install characterai
 pip install sounddevice
 pip install gpytranslate

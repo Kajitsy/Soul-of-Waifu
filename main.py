@@ -4,13 +4,12 @@ import json
 import torch
 import curses
 import asyncio
-import keyboard
 import pyfiglet
 import sounddevice as sd
 from gpytranslate import Translator
 from colorama import Fore, Style
 from characterai import aiocai, sendCode, authUser
-from whisper_mic import WhisperMic
+import speech_recognition as sr
 from elevenlabs import play
 from elevenlabs.client import ElevenLabs
 
@@ -198,7 +197,7 @@ class Configuration:
             return main_config
         
         if 'characterai_api' not in config:
-            email = input("Введите привязанную к аккаунту Character.AI почту(если у вас уже есть API-ключ введите " + Fore.CYAN + "Ключ" + Style.RESET_ALL +"): ")
+            email = input("Введите привязанную к аккаунту Character.AI почту(если у вас уже есть API-ключ введите " + Fore.RED + "СЛОВО " + Fore.CYAN + "Ключ" + Style.RESET_ALL +"): ")
             if email == "Ключ" or email == "ключ":
                 config['characterai_api'] = input("Введите Ваш API-ключ: ")
             else:
@@ -209,7 +208,7 @@ class Configuration:
             print("API-ключ от Character AI успешно добавлен")
 
         while True:
-            chosen_variable = input(f"Что вы хотите использовать для создания голоса({Fore.CYAN}SileroTTS{Style.RESET_ALL} или {Fore.CYAN}ElevenLabs{Style.RESET_ALL}): ")
+            chosen_variable = input(f"Что вы хотите использовать для создания голоса({Fore.CYAN}1. SileroTTS{Style.RESET_ALL} или {Fore.CYAN}2. ElevenLabs{Style.RESET_ALL}): ")
             if chosen_variable == "ElevenLabs" or chosen_variable == "elevenlabs" or chosen_variable == "Elevenlabs" or chosen_variable == "elevenLabs":
                 config['tts_service'] = "ElevenLabs"
                 if 'elevenlabs_api' not in config:
@@ -462,10 +461,14 @@ def check_silero_models(): #Проверка наличия моделей Siler
                                     local_file_eng)
 
 def whisper_mic(): #Запись слов с микрофона
-    mic = WhisperMic(model='base', english=False, energy=300, pause=1)
-    print(Fore.CYAN + "Запись началась, " + Fore.RED + "говорите..." + Style.RESET_ALL)
-    mic_message = mic.listen()
-    return mic_message
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        audio = recognizer.listen(source)
+    try:
+        msg1 = recognizer.recognize_google(audio, language="ru-RU")
+    except sr.UnknownValueError:
+        print("Скажите ещё раз...")
+    return msg1
 
 def silero_dub(model, message_char, sample_rate): #Русская озвучка SileroTTS
     audio = model.apply_tts(text = message_char, speaker = speaker, sample_rate = sample_rate, put_accent = put_accent, put_yo = put_yo)
@@ -497,7 +500,7 @@ async def get_message(text, char):
     chatid = await client.get_chat(char)
     async with await client.connect() as chat:
         message = await chat.send_message(char, chatid.chat_id, text)
-    return message
+    return message.text
 
 def main():
     #Logo display
@@ -545,23 +548,23 @@ async def mode2(): #Режим с русской озвучкой SileroTTS
     print("Персонаж " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " был выбран")
     print("")
     print("Чтобы выйти в главное меню, скажи" + Fore.CYAN + " Выход" + Style.RESET_ALL)
-    print("Нажми на " + Fore.CYAN +"ПРАВЫЙ SHIFT" + Style.RESET_ALL + ", чтобы запустить программу...")
     while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                t = Translator()
-                message_user = whisper_mic() 
-                print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)     
-                translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-                message_user = translation.text
-                ai_message = await get_message(message_user, char)
-                translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
-                message_char = translation.text
-                model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
-                model.to(device)
-                print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-                print("-------------------------------------") 
-                silero_dub(model, message_char, sample_rate)
+        t = Translator()
+        print("Говорите...")
+        message_user = whisper_mic() 
+        print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)     
+        if message_user.lower() == 'Выход' or message_user.lower() == 'выход':
+            break
+        translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
+        message_user = translation.text
+        ai_message = await get_message(message_user, char)
+        translation = await t.translate(ai_message, targetlang='ru') #Язык, на который переводится текст
+        message_char = translation.text
+        model = torch.package.PackageImporter(local_file_ru).load_pickle("tts_models", "model")
+        model.to(device)
+        print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
+        print("-------------------------------------") 
+        silero_dub(model, message_char, sample_rate)
 
 async def mode3(): #Режим с английской озвучкой SileroTTS
     print("-------------------------------------")
@@ -572,21 +575,20 @@ async def mode3(): #Режим с английской озвучкой SileroTT
     print("Персонаж " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " был выбран")
     print("")
     print("Чтобы выйти в главное меню, скажи" + Fore.CYAN + " Выход" + Style.RESET_ALL)
-    print("Нажми на " + Fore.CYAN +"ПРАВЫЙ SHIFT" + Style.RESET_ALL + ", чтобы запустить программу...")
     while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                t = Translator()
-                message_user = whisper_mic()
-                print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
-                translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-                message_user = translation.text
-                message_char = await get_message(message_user, char)
-                model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-                model.to(device)
-                print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-                print("-------------------------------------") 
-                silero_dub_en(model, message_char, sample_rate)
+        t = Translator()
+        message_user = whisper_mic()
+        print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
+        if message_user.lower() == 'Выход' or message_user.lower() == 'выход':
+            break
+        translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
+        message_user = translation.text
+        message_char = await get_message(message_user, char)
+        model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+        model.to(device)
+        print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
+        print("-------------------------------------") 
+        silero_dub_en(model, message_char, sample_rate)
 
 async def mode4(): #Режим с озвучкой ElevenLabs
     print("-------------------------------------")
@@ -597,21 +599,21 @@ async def mode4(): #Режим с озвучкой ElevenLabs
     print("Персонаж " + Fore.RED + f"{char_name.get(char)}" + Style.RESET_ALL + " был выбран")
     print("")
     print("Чтобы выйти в главное меню, скажи" + Fore.CYAN + " Выход" + Style.RESET_ALL)
-    print("Нажми на " + Fore.CYAN +"ПРАВЫЙ SHIFT" + Style.RESET_ALL + ", чтобы запустить программу...")
     while True:
-        if keyboard.is_pressed('RIGHT_SHIFT'):
-            while True:
-                t = Translator()
-                message_user = whisper_mic()
-                print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
-                translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
-                message_user = translation.text
-                message_char = await get_message(message_user, char)
-                model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
-                model.to(device)
-                print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
-                print("-------------------------------------") 
-                eleven_dub(message_char)
+        t = Translator()
+        print("Говорите...")
+        message_user = whisper_mic()
+        print(Fore.CYAN + "Вы: " + Style.RESET_ALL, message_user)
+        if message_user.lower() == 'Выход' or message_user.lower() == 'выход':
+            break
+        translation = await t.translate(message_user, targetlang='en') #Язык, на который переводится текст
+        message_user = translation.text
+        message_char = await get_message(message_user, char)
+        model = torch.package.PackageImporter(local_file_eng).load_pickle("tts_models", "model")
+        model.to(device)
+        print(Fore.BLUE + "Персонаж ответил: " + Style.RESET_ALL + f"{message_char}")
+        print("-------------------------------------") 
+        eleven_dub(message_char)
 
 #Создание и чтение конфигурационного файла
 current_dir = os.getcwd()
