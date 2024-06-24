@@ -9,6 +9,7 @@ pip install gpytranslate
 pip install windows-curses
 pip install colorama
 pip install elevenlabs
+pip install numpy<2
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pause
 @echo Press any key to continue. . .
